@@ -1,0 +1,2 @@
+include CHANGES.txt AUTHORS.txt LICENSE.txt VERSION.txt README.rst setup.py
+include remotepixel/cmap.txt

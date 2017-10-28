@@ -11,7 +11,7 @@ from rasterio.io import MemoryFile
 
 from remotepixel import utils
 
-sentinel_bucket = 's3://sentinel-s2-l1c'
+SENTINEL_BUCKET = 's3://sentinel-s2-l1c'
 
 ################################################################################
 
@@ -50,7 +50,7 @@ def create(scene, bucket, bands=['04', '03', '02']):
     """
 
     scene_params = utils.sentinel_parse_scene_id(scene)
-    sentinel_address = f'{sentinel_bucket}/{scene_params["key"]}'
+    sentinel_address = f'{SENTINEL_BUCKET}/{scene_params["key"]}'
 
     band_address = f'{sentinel_address}/B{bands[0]}.jp2'
     with rio.open(band_address) as src:
@@ -61,7 +61,6 @@ def create(scene, bucket, bands=['04', '03', '02']):
                 count=3,
                 interleave='pixel',
                 PHOTOMETRIC='RGB',
-                tiled=False,
                 compress=None)
 
     addresses = [f'{sentinel_address}/B{band}.jp2' for band in bands]

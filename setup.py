@@ -35,7 +35,7 @@ setup(name='remotepixel',
           "numpy",
           "Pillow",
           "mercantile",
-          "rasterio[s3]==1.0a9",
+          "rasterio[s3]==1.0a10",
           "rio-toa"
       ],
       extras_require={

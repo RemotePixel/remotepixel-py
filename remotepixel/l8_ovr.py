@@ -2,32 +2,33 @@
 
 import base64
 from io import BytesIO
+from functools import partial
 from concurrent import futures
 
 import numpy as np
 from PIL import Image
 
-from rio_toa import reflectance
+from rio_toa.reflectance import reflectance
 
 from remotepixel import utils
 
 np.seterr(divide='ignore', invalid='ignore')
 
-landsat_bucket = 's3://landsat-pds'
+LANDSAT_BUCKET = 's3://landsat-pds'
 
 
-def worker(args):
+def worker(band, landsat_address, meta, ovr_size, ndvi):
     """
     """
 
-    address, band, meta, ovrSize, ndvi = args
+    address = f'{landsat_address}_B{band}.TIF'
 
-    MR = float(utils.landsat_mtl_extract(meta, f'REFLECTANCE_MULT_BAND_{band}'))
-    AR = float(utils.landsat_mtl_extract(meta, f'REFLECTANCE_ADD_BAND_{band}'))
-    E = float(utils.landsat_mtl_extract(meta, 'SUN_ELEVATION'))
+    sun_elev = meta['IMAGE_ATTRIBUTES']['SUN_ELEVATION']
+    multi_reflect = meta['RADIOMETRIC_RESCALING'][f'REFLECTANCE_MULT_BAND_{band}']
+    add_reflect = meta['RADIOMETRIC_RESCALING'][f'REFLECTANCE_ADD_BAND_{band}']
 
-    matrix = utils.get_overview(address, ovrSize)
-    matrix = reflectance.reflectance(matrix, MR, AR, E, src_nodata=0)
+    matrix = utils.get_overview(address, ovr_size)
+    matrix = reflectance(matrix, multi_reflect, add_reflect, sun_elev, src_nodata=0)
     if not ndvi:
         imgRange = np.percentile(matrix[matrix > 0], (2, 98)).tolist()
         matrix = np.where(matrix > 0, utils.linear_rescale(matrix, in_range=imgRange, out_range=[1, 255]), 0).astype(np.uint8)
@@ -43,18 +44,20 @@ def create(scene, bands=[4, 3, 2], img_format='jpeg', ovrSize=512):
         raise UserWarning(f'Invalid {img_format} extension')
 
     scene_params = utils.landsat_parse_scene_id(scene)
-    meta_data = utils.landsat_get_mtl(scene)
-    landsat_address = f'{landsat_bucket}/{scene_params["key"]}'
+    meta_data = utils.landsat_get_mtl(scene).get('L1_METADATA_FILE')
+    landsat_address = f'{LANDSAT_BUCKET}/{scene_params["key"]}'
 
-    args = ((f'{landsat_address}_B{band}.TIF',  band, meta_data, ovrSize, False) for band in bands)
-
-    out = np.zeros((4, ovrSize, ovrSize), dtype=np.uint8)
+    _worker = partial(worker, landsat_address=landsat_address, meta=meta_data, ovr_size=ovrSize, ndvi=False)
     with futures.ThreadPoolExecutor(max_workers=3) as executor:
-        out[0:3] = list(executor.map(worker, args))
+        out = np.stack(list(executor.map(_worker, bands)))
 
-    out[-1] = np.all(np.dstack(out[:3]) != 0, axis=2).astype(np.uint8) * 255
+    mask_shape = (1,) + out.shape[-2:]
+    mask = np.full(mask_shape, 255, dtype=np.uint8)
+    mask[0] = np.all(np.dstack(out) != 0, axis=2).astype(np.uint8) * 255
+    out = np.concatenate((out, mask))
 
-    img = Image.fromarray(np.dstack(out))
+    img = Image.fromarray(np.stack(out, axis=2))
+
     sio = BytesIO()
 
     if img_format == 'jpeg':
@@ -76,18 +79,17 @@ def create_ndvi(scene, img_format='jpeg', ovrSize=512):
         raise UserWarning(f'Invalid {img_format} extension')
 
     scene_params = utils.landsat_parse_scene_id(scene)
-    meta_data = utils.landsat_get_mtl(scene)
-    landsat_address = f'{landsat_bucket}/{scene_params["key"]}'
+    meta_data = utils.landsat_get_mtl(scene).get('L1_METADATA_FILE')
+    landsat_address = f'{LANDSAT_BUCKET}/{scene_params["key"]}'
 
     bands = [4, 5]
 
-    args = ((f'{landsat_address}_B{band}.TIF', band, meta_data, ovrSize, True) for band in bands)
-
+    _worker = partial(worker, landsat_address=landsat_address, meta=meta_data, ovr_size=ovrSize, ndvi=True)
     with futures.ThreadPoolExecutor(max_workers=3) as executor:
-        out = list(executor.map(worker, args))
+        out = np.stack(list(executor.map(_worker, bands)))
 
-    ratio = np.where((out[1] * out[0]) > 0, np.nan_to_num((out[1] - out[0]) / (out[1] + out[0])), -1)
-    ratio = np.where(ratio > -1, utils.linear_rescale(ratio, in_range=[-1, 1], out_range=[1, 255]), 0).astype(np.uint8)
+    ratio = np.where((out[1] * out[0]) > 0, np.nan_to_num((out[1] - out[0]) / (out[1] + out[0])), -9999)
+    ratio = np.where(ratio > -9999, utils.linear_rescale(ratio, in_range=[-1, 1], out_range=[1, 255]), 0).astype(np.uint8)
 
     cmap = list(np.array(utils.get_colormap()).flatten())
     img = Image.fromarray(ratio, 'P')

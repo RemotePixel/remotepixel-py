@@ -9,6 +9,8 @@ import numpy as np
 import rasterio as rio
 from rasterio.enums import Resampling
 
+from rio_toa import toa_utils
+
 
 def get_colormap():
     """
@@ -44,29 +46,28 @@ def linear_rescale(image, in_range=[0, 16000], out_range=[1, 255]):
 
 
 def landsat_get_mtl(sceneid):
-    """
-    Get Landsat MTL metadata
+    """Get Landsat-8 MTL metadata
+
+    Attributes
+    ----------
+
+    sceneid : str
+        Landsat sceneid. For scenes after May 2017,
+        sceneid have to be LANDSAT_PRODUCT_ID.
+
+    Returns
+    -------
+    out : dict
+        returns a JSON like object with the metadata.
     """
 
     try:
         scene_params = landsat_parse_scene_id(sceneid)
-        meta_file = f'http://landsat-pds.s3.amazonaws.com/{scene_params["key"]}_MTL.txt'
-        return urlopen(meta_file).read().decode().splitlines()
+        meta_file = 'http://landsat-pds.s3.amazonaws.com/{}_MTL.txt'.format(scene_params['key'])
+        metadata = str(urlopen(meta_file).read().decode())
+        return toa_utils._parse_mtl_txt(metadata)
     except:
-        raise Exception(f'Could not retrieve {sceneid} metadata')
-
-
-def landsat_mtl_extract(meta, param):
-    """
-    Extracting MTL info
-    """
-
-    for line in meta:
-        data = line.split(' = ')
-        if (data[0]).strip() == param:
-            return (data[1]).strip()
-
-    raise ValueError(f'No {param} found')
+        raise Exception('Could not retrieve {} metadata'.format(sceneid))
 
 
 def landsat_parse_scene_id(sceneid):

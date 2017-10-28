@@ -1,6 +1,13 @@
 Changes
 =======
 
+0.0.2 (2017-09-29)
+----------------
+- Adapt for rasterio 1.0a10.
+- Uses rio_toa.toa_utils._parse_mtl_txt to parse MTL files
+- Fix Sentinel2 overview NDVI bug
+
+
 0.0.1 (2017-09-29)
 ----------------
 - Initial release.

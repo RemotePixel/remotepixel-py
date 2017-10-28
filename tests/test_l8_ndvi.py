@@ -3,6 +3,7 @@ import os
 
 from mock import patch
 
+from rio_toa import toa_utils
 from remotepixel import l8_ndvi
 
 landsat_scene_c1 = 'LC08_L1TP_016037_20170813_20170814_01_RT'
@@ -10,7 +11,7 @@ landsat_bucket = os.path.join(os.path.dirname(__file__), 'fixtures', 'landsat-pd
 
 landsat_path = os.path.join(landsat_bucket, 'c1', 'L8', '016', '037', landsat_scene_c1, landsat_scene_c1)
 with open(f'{landsat_path}_MTL.txt', 'r') as f:
-    landsat_meta = f.read().splitlines()
+    landsat_meta = toa_utils._parse_mtl_txt(f.read())
 
 
 @patch('remotepixel.utils.landsat_get_mtl')
@@ -19,7 +20,7 @@ def test_point_valid(landsat_get_mtl, monkeypatch):
     Should work as expected (read data, calculate NDVI and return json info)
     """
 
-    monkeypatch.setattr(l8_ndvi, 'landsat_bucket', landsat_bucket)
+    monkeypatch.setattr(l8_ndvi, 'LANDSAT_BUCKET', landsat_bucket)
     landsat_get_mtl.return_value = landsat_meta
 
     coords = [-80.073, 33.17]
@@ -37,7 +38,7 @@ def test_point_validZero(landsat_get_mtl, monkeypatch):
     Should work as expected (read data, calculate NDVI and return json info)
     """
 
-    monkeypatch.setattr(l8_ndvi, 'landsat_bucket', landsat_bucket)
+    monkeypatch.setattr(l8_ndvi, 'LANDSAT_BUCKET', landsat_bucket)
     landsat_get_mtl.return_value = landsat_meta
 
     coords = [-80.0, 32.1]
@@ -55,7 +56,7 @@ def test_area_valid(landsat_get_mtl, monkeypatch):
     Should work as expected (read data, calculate NDVI and return img)
     """
 
-    monkeypatch.setattr(l8_ndvi, 'landsat_bucket', landsat_bucket)
+    monkeypatch.setattr(l8_ndvi, 'LANDSAT_BUCKET', landsat_bucket)
     landsat_get_mtl.return_value = landsat_meta
 
     bbox = [-80.5, 32.5, -79.5, 33.5]

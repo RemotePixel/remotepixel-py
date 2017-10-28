@@ -26,7 +26,7 @@ def test_create_valid(client, monkeypatch):
     Should work as expected (read r,g,b bands and create JPEG image)
     """
 
-    monkeypatch.setattr(s2_full, 'sentinel_bucket', sentinel_bucket)
+    monkeypatch.setattr(s2_full, 'SENTINEL_BUCKET', sentinel_bucket)
     client.return_value.put_object.return_value = True
 
     bucket = 'my-bucket'
@@ -40,7 +40,7 @@ def test_create_validBands(client, monkeypatch):
     Should work as expected (read data, create RGB and upload to S3)
     """
 
-    monkeypatch.setattr(s2_full, 'sentinel_bucket', sentinel_bucket)
+    monkeypatch.setattr(s2_full, 'SENTINEL_BUCKET', sentinel_bucket)
     client.return_value.put_object.return_value = True
 
     bucket = 'my-bucket'

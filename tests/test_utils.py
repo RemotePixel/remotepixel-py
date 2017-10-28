@@ -5,22 +5,19 @@ import pytest
 
 import numpy as np
 
+from mock import patch
+
+from rio_toa import toa_utils
+
 from remotepixel import utils
 
 
 mtl_file = os.path.join(os.path.dirname(__file__), 'fixtures', 'LC80140352017115LGN00_MTL.txt')
 with open(mtl_file, 'r') as f:
-    meta_data = f.read().splitlines()
+    meta_data = toa_utils._parse_mtl_txt(f.read())
 
-
-def test_landsat_mtl_extract_valid():
-    expectedContent = '37.08780'
-    assert utils.landsat_mtl_extract(meta_data, 'CORNER_UL_LAT_PRODUCT') == expectedContent
-
-
-def test_landsat_mtl_extract_Error():
-    with pytest.raises(ValueError):
-        utils.landsat_mtl_extract(meta_data, 'CORNER_UL_PRODUCT')
+with open(mtl_file, 'r') as f:
+    meta_data_raw = f.read().encode('utf-8')
 
 
 def test_linear_rescale_valid():
@@ -144,3 +141,20 @@ def test_get_overview_validSentinel():
     address = f'{sentinel_path}/B04.jp2'
 
     assert utils.get_overview(address, 512).shape == (512, 512)
+
+
+@patch('remotepixel.utils.urlopen')
+def test_landsat_get_mtl_valid(urlopen):
+
+    urlopen.return_value.read.return_value = meta_data_raw
+
+    meta_data = utils.landsat_get_mtl('LC08_L1TP_016037_20170813_20170814_01_RT')
+    assert meta_data['L1_METADATA_FILE']['METADATA_FILE_INFO']['LANDSAT_SCENE_ID'] == 'LC80140352017115LGN00'
+
+
+@patch('remotepixel.utils.urlopen')
+def test_landsat_get_mtl_invalid(urlopen):
+
+    urlopen.return_value.read.return_value = {}
+    with pytest.raises(Exception):
+        utils.landsat_get_mtl('LC08_L1TP_016037_20170813_20170814_01_RT')

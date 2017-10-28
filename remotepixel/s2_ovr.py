@@ -2,6 +2,7 @@
 
 import base64
 from io import BytesIO
+from functools import partial
 from concurrent import futures
 
 import numpy as np
@@ -11,7 +12,7 @@ from remotepixel import utils
 
 np.seterr(divide='ignore', invalid='ignore')
 
-sentinel_bucket = 's3://sentinel-s2-l1c'
+SENTINEL_BUCKET = 's3://sentinel-s2-l1c'
 
 # https://en.wikipedia.org/wiki/Sentinel-2
 band_info = {
@@ -30,12 +31,13 @@ band_info = {
     '12': {'res': 20, 'wavelenght': 2.190, 'name': 'SWIR'}}
 
 
-def worker(args):
+def worker(band, sentinel_address, ovr_size, ndvi):
     """
     """
-    address, ovrSize, ndvi = args
 
-    matrix = utils.get_overview(address, ovrSize)
+    address = f'{sentinel_address}/B{band}.jp2'
+
+    matrix = utils.get_overview(address, ovr_size)
     if not ndvi:
         imgRange = np.percentile(matrix[matrix > 0], (2, 98)).tolist()
         matrix = np.where(matrix > 0, utils.linear_rescale(matrix, in_range=imgRange, out_range=[1, 255]), 0).astype(np.uint8)
@@ -51,17 +53,19 @@ def create(scene, bands=['04', '03', '02'], img_format='jpeg', ovrSize=512):
         raise UserWarning(f'Invalid {img_format} extension')
 
     scene_params = utils.sentinel_parse_scene_id(scene)
-    sentinel_address = f'{sentinel_bucket}/{scene_params["key"]}'
+    sentinel_address = f'{SENTINEL_BUCKET}/{scene_params["key"]}'
 
-    args = ((f'{sentinel_address}/B{band}.jp2', ovrSize, False) for band in bands)
-
-    out = np.zeros((4, ovrSize, ovrSize), dtype=np.uint8)
+    _worker = partial(worker, sentinel_address=sentinel_address, ovr_size=ovrSize, ndvi=False)
     with futures.ThreadPoolExecutor(max_workers=3) as executor:
-        out[0:3] = list(executor.map(worker, args))
+        out = np.stack(list(executor.map(_worker, bands)))
 
-    out[-1] = np.all(np.dstack(out[:3]) != 0, axis=2).astype(np.uint8) * 255
+    mask_shape = (1,) + out.shape[-2:]
+    mask = np.full(mask_shape, 255, dtype=np.uint8)
+    mask[0] = np.all(np.dstack(out) != 0, axis=2).astype(np.uint8) * 255
+    out = np.concatenate((out, mask))
 
-    img = Image.fromarray(np.dstack(out))
+    img = Image.fromarray(np.stack(out, axis=2))
+
     sio = BytesIO()
 
     if img_format == 'jpeg':
@@ -83,16 +87,16 @@ def create_ndvi(scene, img_format='jpeg', ovrSize=512):
         raise UserWarning(f'Invalid {img_format} extension')
 
     scene_params = utils.sentinel_parse_scene_id(scene)
-    sentinel_address = f'{sentinel_bucket}/{scene_params["key"]}'
+    sentinel_address = f'{SENTINEL_BUCKET}/{scene_params["key"]}'
 
-    bands = ['08', '04']
-    args = ((f'{sentinel_address}/B{band}.jp2', ovrSize, True) for band in bands)
+    bands = ['04', '08']
 
+    _worker = partial(worker, sentinel_address=sentinel_address, ovr_size=ovrSize, ndvi=True)
     with futures.ThreadPoolExecutor(max_workers=3) as executor:
-        out = list(executor.map(worker, args))
+        out = np.stack(list(executor.map(_worker, bands)))
 
-    ratio = np.where((out[1] * out[0]) > 0, np.nan_to_num((out[1] - out[0]) / (out[1] + out[0])), -1)
-    ratio = np.where(ratio > -1, utils.linear_rescale(ratio, in_range=[-1, 1], out_range=[1, 255]), 0).astype(np.uint8)
+    ratio = np.where((out[1] * out[0]) > 0, np.nan_to_num((out[1] - out[0]) / (out[1] + out[0])), -9999)
+    ratio = np.where(ratio > -9999, utils.linear_rescale(ratio, in_range=[-1, 1], out_range=[1, 255]), 0).astype(np.uint8)
 
     cmap = list(np.array(utils.get_colormap()).flatten())
     img = Image.fromarray(ratio, 'P')

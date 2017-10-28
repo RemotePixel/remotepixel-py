@@ -2,6 +2,7 @@
 
 import os
 import json
+from functools import partial
 from concurrent import futures
 from datetime import datetime, timedelta
 
@@ -14,23 +15,21 @@ from rasterio.io import MemoryFile
 from rasterio.vrt import WarpedVRT
 from rasterio.enums import Resampling
 from rasterio.warp import transform_bounds, calculate_default_transform
-from rio_toa import reflectance
+from rio_toa.reflectance import reflectance
 
 from remotepixel import utils
 
-landsat_bucket = 's3://landsat-pds'
+LANDSAT_BUCKET = 's3://landsat-pds'
 
 
-def get_scene(args):
+def get_scene(scene, bands):
     """
     """
-
-    scene, bands = args
 
     try:
         scene_params = utils.landsat_parse_scene_id(scene)
-        meta_data = utils.landsat_get_mtl(scene)
-        landsat_address = f'{landsat_bucket}/{scene_params["key"]}'
+        meta_data = utils.landsat_get_mtl(scene).get('L1_METADATA_FILE')
+        landsat_address = f'{LANDSAT_BUCKET}/{scene_params["key"]}'
 
         bqa = f'{landsat_address}_BQA.TIF'
         with rio.open(bqa) as src:
@@ -52,6 +51,8 @@ def get_scene(args):
                       crs='epsg:3857',
                       transform=dst_affine) as dataset:
 
+            sun_elev = meta_data['IMAGE_ATTRIBUTES']['SUN_ELEVATION']
+
             for b in range(len(bands)):
                 band_address = f'{landsat_address}_B{bands[b]}.TIF'
 
@@ -59,15 +60,13 @@ def get_scene(args):
                     with WarpedVRT(src, dst_crs='EPSG:3857', resampling=Resampling.bilinear, src_nodata=0, dst_nodata=0) as vrt:
                         matrix = vrt.read(indexes=1, out_shape=(height, width))
 
-                MR = float(utils.landsat_mtl_extract(meta_data, f'REFLECTANCE_MULT_BAND_{bands[b]}'))
-                AR = float(utils.landsat_mtl_extract(meta_data, f'REFLECTANCE_ADD_BAND_{bands[b]}'))
-                E = float(utils.landsat_mtl_extract(meta_data, 'SUN_ELEVATION'))
+                multi_reflect = meta_data['RADIOMETRIC_RESCALING'][f'REFLECTANCE_MULT_BAND_{bands[b]}']
+                add_reflect = meta_data['RADIOMETRIC_RESCALING'][f'REFLECTANCE_ADD_BAND_{bands[b]}']
+                minref = meta_data['MIN_MAX_REFLECTANCE'][f'REFLECTANCE_MINIMUM_BAND_{bands[b]}'] * 10000
+                maxref = meta_data['MIN_MAX_REFLECTANCE'][f'REFLECTANCE_MAXIMUM_BAND_{bands[b]}'] * 10000
 
-                matrix = reflectance.reflectance(matrix, MR, AR, E, src_nodata=0) * 10000
-                minRef = float(utils.landsat_mtl_extract(meta_data, f'REFLECTANCE_MINIMUM_BAND_{bands[b]}')) * 10000
-                maxRef = float(utils.landsat_mtl_extract(meta_data, f'REFLECTANCE_MAXIMUM_BAND_{bands[b]}')) * 10000
-
-                matrix = np.where(matrix > 0, utils.linear_rescale(matrix, in_range=[int(minRef), int(maxRef)], out_range=[1, 255]), 0).astype(np.uint8)
+                matrix = reflectance(matrix, multi_reflect, add_reflect, sun_elev, src_nodata=0) * 10000
+                matrix = np.where(matrix > 0, utils.linear_rescale(matrix, in_range=[int(minref), int(maxref)], out_range=[1, 255]), 0).astype(np.uint8)
 
                 mask = np.ma.masked_values(matrix, 0)
                 s = np.ma.notmasked_contiguous(mask)
@@ -90,9 +89,9 @@ def create(scenes, uuid, bucket, bands=[4, 3, 2]):
     """
     """
 
-    args = ((scene, bands) for scene in scenes)
+    _worker = partial(get_scene, bands=bands)
     with futures.ThreadPoolExecutor(max_workers=10) as executor:
-        allScenes = executor.map(get_scene, args)
+        allScenes = executor.map(_worker, scenes)
 
     sources = [rio.open(x) for x in allScenes if x]
     dest, output_transform = merge(sources, nodata=0)

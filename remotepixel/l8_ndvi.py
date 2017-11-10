@@ -44,7 +44,7 @@ def point(scene, coord):
         b5 = list(band.sample([(lon_srs[0], lat_srs[0])]))[0]
         b5 = reflectance(b5, multi_reflect, add_reflect, sun_elev, src_nodata=0)[0]
 
-    ratio = np.nan_to_num((b5 - b4) / (b5 + b4)) if (b4 * b5) > 0 else 0.
+    ratio = float(np.nan_to_num((b5 - b4) / (b5 + b4)) if (b4 * b5) > 0 else 0.)
 
     out = {
         'ndvi': ratio,

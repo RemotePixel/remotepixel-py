@@ -1,6 +1,11 @@
 Changes
 =======
 
+0.0.3 (2017-11-09)
+----------------
+- Fix Numpy Float32 Object not JSON serializable (#1)
+- Update rasterio version 
+
 0.0.2 (2017-09-29)
 ----------------
 - Adapt for rasterio 1.0a10.

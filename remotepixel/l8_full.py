@@ -46,18 +46,16 @@ def create(scene, bucket, bands=[4, 3, 2]):
                         result = 10000 * reflectance(matrix, multi_reflect, add_reflect, sun_elev, src_nodata=0)
                         dataset.write(result.astype(np.uint16), window=window, indexes=b+1)
 
-        client = boto3.client('s3')
         str_band = ''.join(map(str, bands))
         key = f'data/landsat/{scene}_B{str_band}.tif'
         expiration = datetime.now() + timedelta(days=15)
 
-        client.put_object(
-            ACL='public-read',
-            Bucket=bucket,
-            Key=key,
-            Expires=expiration,
-            Body=memfile,
-            ContentType='image/tiff')
+        client = boto3.client('s3')
+        client.upload_fileobj(memfile, bucket, key,
+                              ExtraArgs={
+                                    'ACL': 'public-read',
+                                    'Expires': expiration,
+                                    'ContentType': 'image/tiff'})
 
     return True
 
@@ -99,16 +97,14 @@ def create_ndvi(scene, bucket):
                         ratio = np.where((b5_data * b4_data) > 0, np.nan_to_num((b5_data - b4_data) / (b5_data + b4_data)), -9999)
                         dataset.write(ratio, window=window, indexes=1)
 
-        client = boto3.client('s3')
         key = f'data/landsat/{scene}_NDVI.tif'
         expiration = datetime.now() + timedelta(days=15)
 
-        client.put_object(
-            ACL='public-read',
-            Bucket=bucket,
-            Key=key,
-            Expires=expiration,
-            Body=memfile,
-            ContentType='image/tiff')
+        client = boto3.client('s3')
+        client.upload_fileobj(memfile, bucket, key,
+                              ExtraArgs={
+                                    'ACL': 'public-read',
+                                    'Expires': expiration,
+                                    'ContentType': 'image/tiff'})
 
     return True

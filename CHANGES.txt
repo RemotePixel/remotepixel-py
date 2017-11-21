@@ -1,17 +1,19 @@
 Changes
 =======
+0.0.4 (2017-11-21)
+----------------
+- Use S3 upload_fileobj
 
 0.0.3 (2017-11-09)
 ----------------
 - Fix Numpy Float32 Object not JSON serializable (#1)
-- Update rasterio version 
+- Update rasterio version
 
 0.0.2 (2017-09-29)
 ----------------
 - Adapt for rasterio 1.0a10.
 - Uses rio_toa.toa_utils._parse_mtl_txt to parse MTL files
 - Fix Sentinel2 overview NDVI bug
-
 
 0.0.1 (2017-09-29)
 ----------------

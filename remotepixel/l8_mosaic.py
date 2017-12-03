@@ -4,7 +4,6 @@ import os
 import json
 from functools import partial
 from concurrent import futures
-from datetime import datetime, timedelta
 
 import boto3
 import numpy as np
@@ -57,7 +56,11 @@ def get_scene(scene, bands):
                 band_address = f'{landsat_address}_B{bands[b]}.TIF'
 
                 with rio.open(band_address) as src:
-                    with WarpedVRT(src, dst_crs='EPSG:3857', resampling=Resampling.bilinear, src_nodata=0, dst_nodata=0) as vrt:
+                    with WarpedVRT(src,
+                                   dst_crs='EPSG:3857',
+                                   resampling=Resampling.bilinear,
+                                   src_nodata=0,
+                                   dst_nodata=0) as vrt:
                         matrix = vrt.read(indexes=1, out_shape=(height, width))
 
                 multi_reflect = meta_data['RADIOMETRIC_RESCALING'][f'REFLECTANCE_MULT_BAND_{bands[b]}']
@@ -66,7 +69,9 @@ def get_scene(scene, bands):
                 maxref = meta_data['MIN_MAX_REFLECTANCE'][f'REFLECTANCE_MAXIMUM_BAND_{bands[b]}'] * 10000
 
                 matrix = reflectance(matrix, multi_reflect, add_reflect, sun_elev, src_nodata=0) * 10000
-                matrix = np.where(matrix > 0, utils.linear_rescale(matrix, in_range=[int(minref), int(maxref)], out_range=[1, 255]), 0).astype(np.uint8)
+                matrix = np.where(matrix > 0,
+                                  utils.linear_rescale(matrix, in_range=[int(minref), int(maxref)], out_range=[1, 255]),
+                                  0).astype(np.uint8)
 
                 mask = np.ma.masked_values(matrix, 0)
                 s = np.ma.notmasked_contiguous(mask)
@@ -117,13 +122,11 @@ def create(scenes, uuid, bucket, bands=[4, 3, 2]):
                 list(dataset.bounds), densify_pts=21)
 
         client = boto3.client('s3')
-        expiration = datetime.now() + timedelta(days=7)
 
         client.put_object(
             ACL='public-read',
             Bucket=os.environ.get('OUTPUT_BUCKET'),
             Key=f'data/mosaic/{uuid}_mosaic.tif',
-            Expires=expiration,
             Body=memfile,
             ContentType='image/tiff')
 
@@ -141,7 +144,6 @@ def create(scenes, uuid, bucket, bands=[4, 3, 2]):
             ACL='public-read',
             Bucket=bucket,
             Key=f'data/mosaic/{uuid}.json',
-            Expires=expiration,
             Body=json.dumps(meta),
             ContentType='application/json')
 

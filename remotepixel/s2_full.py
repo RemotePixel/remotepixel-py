@@ -1,7 +1,6 @@
 """remotepixel.s2_full"""
 
 from concurrent import futures
-from datetime import datetime, timedelta
 
 import boto3
 import numpy as np
@@ -61,7 +60,7 @@ def create(scene, bucket, bands=['04', '03', '02']):
                 count=3,
                 interleave='pixel',
                 PHOTOMETRIC='RGB',
-                compress=None)
+                compress='DEFLATE')
 
     addresses = [f'{sentinel_address}/B{band}.jp2' for band in bands]
 
@@ -70,17 +69,13 @@ def create(scene, bucket, bands=['04', '03', '02']):
             with futures.ThreadPoolExecutor(max_workers=3) as executor:
                 dataset.write(np.stack(list(executor.map(worker, addresses))))
 
-        client = boto3.client('s3')
         str_band = ''.join(map(str, bands))
         key = f'data/s2/{scene}_B{str_band}.tif'
-        expiration = datetime.now() + timedelta(days=15)
 
-        client.put_object(
-            ACL='public-read',
-            Bucket=bucket,
-            Key=key,
-            Expires=expiration,
-            Body=memfile,
-            ContentType='image/tiff')
+        client = boto3.client('s3')
+        client.upload_fileobj(memfile, bucket, key,
+                              ExtraArgs={
+                                    'ACL': 'public-read',
+                                    'ContentType': 'image/tiff'})
 
     return True

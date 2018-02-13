@@ -130,7 +130,7 @@ def test_get_overview_validLandsat():
     landsat_path = os.path.join(landsat_bucket, 'c1', 'L8', '016', '037', landsat_scene_c1, landsat_scene_c1)
     address = f'{landsat_path}_B4.TIF'
 
-    assert utils.get_overview(address, 512).shape == (512, 512)
+    assert utils.get_overview(address, 512).shape == (1, 512, 512)
 
 
 def test_get_overview_validSentinel():
@@ -140,7 +140,7 @@ def test_get_overview_validSentinel():
 
     address = f'{sentinel_path}/B04.jp2'
 
-    assert utils.get_overview(address, 512).shape == (512, 512)
+    assert utils.get_overview(address, 512).shape == (1, 512, 512)
 
 
 @patch('remotepixel.utils.urlopen')

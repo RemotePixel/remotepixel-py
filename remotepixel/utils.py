@@ -6,8 +6,9 @@ from urllib.request import urlopen
 
 import numpy as np
 
-import rasterio as rio
+import rasterio
 from rasterio.enums import Resampling
+from rasterio import warp
 
 from rio_toa import toa_utils
 
@@ -23,13 +24,34 @@ def get_colormap():
     return colormap
 
 
+def get_area(address, bbox, img_size):
+    """
+    """
+    with rasterio.open(address) as src:
+        crs_bounds = warp.transform_bounds('EPSG:4326', src.crs, *bbox)
+        window = src.window(*crs_bounds)
+        width = round(window.width) if window.width < img_size else img_size
+        height = round(window.height) if window.height < img_size else img_size
+
+        matrix = src.read(window=window,
+                          out_shape=(1, height, width),
+                          indexes=1,
+                          resampling=Resampling.bilinear)
+
+        return matrix
+
+
 def get_overview(address, ovrSize):
     """
     """
-    with rio.open(address) as src:
-        matrix = src.read(indexes=1, out_shape=(ovrSize, ovrSize), resampling=Resampling.bilinear).astype(src.profile['dtype'])
 
-    return matrix
+    out_shape = (1, ovrSize, ovrSize)
+    with rasterio.open(address) as src:
+        data = src.read(indexes=(1),
+                        out_shape=out_shape,
+                        resampling=Resampling.bilinear)
+
+        return np.expand_dims(data, axis=0)
 
 
 def linear_rescale(image, in_range=[0, 16000], out_range=[1, 255]):
@@ -181,5 +203,42 @@ def sentinel_parse_scene_id(sceneid):
     n = meta['num']
 
     meta['key'] = f'tiles/{utm}/{sq}/{lat}/{year}/{m}/{d}/{n}'
+
+    return meta
+
+
+def cbers_parse_scene_id(sceneid):
+    """Parse CBERS scene id"""
+
+    if not re.match('^CBERS_4_MUX_[0-9]{8}_[0-9]{3}_[0-9]{3}_L[0-9]$', sceneid):
+        raise ValueError('Could not match {}'.format(sceneid))
+
+    cbers_pattern = (
+        r'(?P<sensor>\w{5})'
+        r'_'
+        r'(?P<satellite>[0-9]{1})'
+        r'_'
+        r'(?P<intrument>\w{3})'
+        r'_'
+        r'(?P<acquisitionYear>[0-9]{4})'
+        r'(?P<acquisitionMonth>[0-9]{2})'
+        r'(?P<acquisitionDay>[0-9]{2})'
+        r'_'
+        r'(?P<path>[0-9]{3})'
+        r'_'
+        r'(?P<row>[0-9]{3})'
+        r'_'
+        r'(?P<processingCorrectionLevel>L[0-9]{1})$')
+
+    meta = None
+    match = re.match(cbers_pattern, sceneid, re.IGNORECASE)
+    if match:
+        meta = match.groupdict()
+
+    path = meta['path']
+    row = meta['row']
+    meta['key'] = 'CBERS4/MUX/{}/{}/{}'.format(path, row, sceneid)
+
+    meta['scene'] = sceneid
 
     return meta

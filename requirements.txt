@@ -1,5 +1,7 @@
 numpy
 Pillow
 mercantile
-rasterio[s3]>=1.0a11
+rasterio[s3]>=1.0a12
 rio-toa
+Wand
+numexpr

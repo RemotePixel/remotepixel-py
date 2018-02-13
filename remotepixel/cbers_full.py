@@ -9,13 +9,12 @@ import numexpr as ne
 
 import rasterio
 from rasterio.io import MemoryFile
-from rio_toa import reflectance
 
 from remotepixel import utils
 
 np.seterr(divide='ignore', invalid='ignore')
 
-LANDSAT_BUCKET = 's3://landsat-pds'
+CBERS_BUCKET = 's3://cbers-pds'
 
 
 def create(scene, out_bucket, bands=None, expression=None, output_uid=None):
@@ -24,9 +23,8 @@ def create(scene, out_bucket, bands=None, expression=None, output_uid=None):
     if not output_uid:
         output_uid = str(uuid.uuid1())
 
-    scene_params = utils.landsat_parse_scene_id(scene)
-    meta_data = utils.landsat_get_mtl(scene).get('L1_METADATA_FILE')
-    landsat_address = f'{LANDSAT_BUCKET}/{scene_params["key"]}'
+    scene_params = utils.cbers_parse_scene_id(scene)
+    cbers_address = f'{CBERS_BUCKET}/{scene_params["key"]}'
 
     if not expression and not bands:
         raise Exception('Expression or Bands must be provided')
@@ -43,7 +41,7 @@ def create(scene, out_bucket, bands=None, expression=None, output_uid=None):
         data_type = np.float32
         nb_bands = len(rgb)
 
-    bqa = f'{landsat_address}_BQA.TIF'
+    bqa = f'{cbers_address}/{scene}_BAND6.tif'
     with rasterio.open(bqa) as src:
         meta = src.meta
         wind = [w for ij, w in src.block_windows(1)]
@@ -54,18 +52,11 @@ def create(scene, out_bucket, bands=None, expression=None, output_uid=None):
                     PHOTOMETRIC='MINISBLACK' if expression else 'RGB',
                     dtype=data_type)
 
-    sun_elev = meta_data['IMAGE_ATTRIBUTES']['SUN_ELEVATION']
-
     def get_window(band, window):
-
         out_shape = (1, window.height, window.width)
-
-        band_address = f'{landsat_address}_B{band}.TIF'
+        band_address = f'{cbers_address}/{scene}_BAND{band}.tif'
         with rasterio.open(band_address) as src:
-            multi_reflect = meta_data['RADIOMETRIC_RESCALING'].get(f'REFLECTANCE_MULT_BAND_{band}')
-            add_reflect = meta_data['RADIOMETRIC_RESCALING'].get(f'REFLECTANCE_ADD_BAND_{band}')
-            data = src.read(window=window, boundless=True, out_shape=out_shape, indexes=(1))
-            return reflectance.reflectance(data, multi_reflect, add_reflect, sun_elev)
+            return src.read(window=window, boundless=True, out_shape=out_shape, indexes=(1))
 
     with MemoryFile() as memfile:
         with memfile.open(**meta) as dataset:
@@ -93,7 +84,7 @@ def create(scene, out_bucket, bands=None, expression=None, output_uid=None):
         else:
             params['Metadata']['bands'] = ''.join(map(str, bands))
 
-        key = f'data/landsat/{output_uid}.tif'
+        key = f'data/cbers/{output_uid}.tif'
         client = boto3.client('s3')
         client.upload_fileobj(memfile, out_bucket, key, ExtraArgs=params)
 

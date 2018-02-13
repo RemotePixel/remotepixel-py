@@ -1,6 +1,6 @@
 
 import os
-
+import pytest
 from mock import patch
 
 from rio_toa import toa_utils
@@ -16,45 +16,61 @@ with open('{}_MTL.txt'.format(landsat_path), 'r') as f:
 
 @patch('remotepixel.l8_full.boto3.client')
 @patch('remotepixel.utils.landsat_get_mtl')
-def test_create_valid(landsat_get_mtl, client, monkeypatch):
-    """
-    Should work as expected (read data, create RGB and upload to S3)
-    """
-
-    monkeypatch.setattr(l8_full, 'LANDSAT_BUCKET', landsat_bucket)
-    landsat_get_mtl.return_value = landsat_meta
-    client.return_value.put_object.return_value = True
-
-    bucket = 'my-bucket'
-    assert l8_full.create(landsat_scene_c1, bucket)
-
-
-@patch('remotepixel.l8_full.boto3.client')
-@patch('remotepixel.utils.landsat_get_mtl')
-def test_create_validBands(landsat_get_mtl, client, monkeypatch):
-    """
-    Should work as expected (read data, create RGB and upload to S3)
+def test_create_bands(landsat_get_mtl, client, monkeypatch):
+    """Should work as expected (read data, create RGB and upload to S3)
     """
 
     monkeypatch.setattr(l8_full, 'LANDSAT_BUCKET', landsat_bucket)
     landsat_get_mtl.return_value = landsat_meta
-    client.return_value.put_object.return_value = True
+    client.return_value.upload_fileobj.return_value = True
 
     bucket = 'my-bucket'
     bands = [5, 4, 3]
-    assert l8_full.create(landsat_scene_c1, bucket, bands)
+    assert l8_full.create(landsat_scene_c1, bucket, bands=bands)
 
 
 @patch('remotepixel.l8_full.boto3.client')
 @patch('remotepixel.utils.landsat_get_mtl')
-def test_create_validNDVI(landsat_get_mtl, client, monkeypatch):
+def test_create_expression(landsat_get_mtl, client, monkeypatch):
+    """Should work as expected (read data, create NDVI and upload to S3)
     """
-    Should work as expected (read data, create NDVI and upload to S3)
+
+    expression = '(b5 - b4) / (b5 + b4)'
+
+    monkeypatch.setattr(l8_full, 'LANDSAT_BUCKET', landsat_bucket)
+    landsat_get_mtl.return_value = landsat_meta
+    client.return_value.upload_fileobj.return_value = True
+
+    bucket = 'my-bucket'
+    assert l8_full.create(landsat_scene_c1, bucket, expression=expression)
+
+
+@patch('remotepixel.l8_full.boto3.client')
+@patch('remotepixel.utils.landsat_get_mtl')
+def test_create_lessBand(landsat_get_mtl, client, monkeypatch):
+    """
     """
 
     monkeypatch.setattr(l8_full, 'LANDSAT_BUCKET', landsat_bucket)
     landsat_get_mtl.return_value = landsat_meta
-    client.return_value.put_object.return_value = True
+    client.return_value.upload_fileobj.return_value = True
 
     bucket = 'my-bucket'
-    assert l8_full.create_ndvi(landsat_scene_c1, bucket)
+    bands = [5, 4]
+    with pytest.raises(Exception):
+        l8_full.create(landsat_scene_c1, bucket, bands=bands)
+
+
+@patch('remotepixel.l8_full.boto3.client')
+@patch('remotepixel.utils.landsat_get_mtl')
+def test_create_noExpreBands(landsat_get_mtl, client, monkeypatch):
+    """
+    """
+
+    monkeypatch.setattr(l8_full, 'LANDSAT_BUCKET', landsat_bucket)
+    landsat_get_mtl.return_value = landsat_meta
+    client.return_value.upload_fileobj.return_value = True
+
+    bucket = 'my-bucket'
+    with pytest.raises(Exception):
+        l8_full.create(landsat_scene_c1, bucket)

@@ -12,39 +12,17 @@ from remotepixel import utils
 
 SENTINEL_BUCKET = 's3://sentinel-s2-l1c'
 
-################################################################################
-
-# This code won't run on AWS Lambda
-
-# TO DO: handle multi resolution
-
-################################################################################
-
-# https://en.wikipedia.org/wiki/Sentinel-2
-band_info = {
-    '01': {'res': 60, 'wavelenght': 0.443, 'name': 'Coastal aerosol'},
-    '02': {'res': 10, 'wavelenght': 0.490, 'name': 'Blue'},
-    '03': {'res': 10, 'wavelenght': 0.560, 'name': 'Green'},
-    '04': {'res': 10, 'wavelenght': 0.665, 'name': 'Red'},
-    '05': {'res': 20, 'wavelenght': 0.705, 'name': 'Vegetation Red Edge'},
-    '06': {'res': 20, 'wavelenght': 0.740, 'name': 'Vegetation Red Edge'},
-    '07': {'res': 20, 'wavelenght': 0.783, 'name': 'Vegetation Red Edge'},
-    '08': {'res': 10, 'wavelenght': 0.842, 'name': 'NIR'},
-    '8A': {'res': 20, 'wavelenght': 0.865, 'name': 'Vegetation Red Edge'},
-    '09': {'res': 60, 'wavelenght': 0.945, 'name': 'Water vapour'},
-    '10': {'res': 60, 'wavelenght': 1.375, 'name': 'SWIR'},
-    '11': {'res': 20, 'wavelenght': 1.610, 'name': 'SWIR'},
-    '12': {'res': 20, 'wavelenght': 2.190, 'name': 'SWIR'}}
-
 
 def worker(band_address):
     """
     """
     with rio.open(band_address) as src:
-        return src.read(indexes=1)
+        data = src.read(indexes=1)
+        imgRange = np.percentile(data[data > 0], (2, 98)).tolist()
+        return np.where(data > 0, utils.linear_rescale(data, in_range=imgRange, out_range=[1, 255]), 0).astype(np.uint8)
 
 
-def create(scene, bucket, bands=['04', '03', '02']):
+def create(scene, out_bucket, bands=['04', '03', '02']):
     """
     """
 
@@ -58,9 +36,10 @@ def create(scene, bucket, bands=['04', '03', '02']):
     meta.update(driver='GTiff',
                 nodata=0,
                 count=3,
+                dtype=np.uint8,
                 interleave='pixel',
-                PHOTOMETRIC='RGB',
-                compress='DEFLATE')
+                PHOTOMETRIC='YCbCr',
+                compress='JPEG')
 
     addresses = [f'{sentinel_address}/B{band}.jp2' for band in bands]
 
@@ -70,10 +49,10 @@ def create(scene, bucket, bands=['04', '03', '02']):
                 dataset.write(np.stack(list(executor.map(worker, addresses))))
 
         str_band = ''.join(map(str, bands))
-        key = f'data/s2/{scene}_B{str_band}.tif'
+        key = f'data/sentinel2/{scene}_B{str_band}.tif'
 
         client = boto3.client('s3')
-        client.upload_fileobj(memfile, bucket, key,
+        client.upload_fileobj(memfile, out_bucket, key,
                               ExtraArgs={
                                     'ACL': 'public-read',
                                     'ContentType': 'image/tiff'})

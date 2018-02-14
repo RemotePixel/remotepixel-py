@@ -1,7 +1,9 @@
 """remotepixel.l8_full"""
 
 import re
-import uuid
+import contextlib
+from functools import partial
+from concurrent import futures
 
 import boto3
 import numpy as np
@@ -18,11 +20,9 @@ np.seterr(divide='ignore', invalid='ignore')
 LANDSAT_BUCKET = 's3://landsat-pds'
 
 
-def create(scene, out_bucket, bands=None, expression=None, output_uid=None):
+def create(scene, out_bucket, bands=None, expression=None):
     """
     """
-    if not output_uid:
-        output_uid = str(uuid.uuid1())
 
     scene_params = utils.landsat_parse_scene_id(scene)
     meta_data = utils.landsat_get_mtl(scene).get('L1_METADATA_FILE')
@@ -38,7 +38,7 @@ def create(scene, out_bucket, bands=None, expression=None, output_uid=None):
             raise Exception('RGB combination only')
 
     if expression:
-        bands = tuple(set(re.findall(r'b(?P<bands>[0-9]{1,2})', expression)))
+        bands = list(set(re.findall(r'b(?P<bands>[0-9]{1,2})', expression)))
         rgb = expression.split(',')
         data_type = np.float32
         nb_bands = len(rgb)
@@ -51,36 +51,38 @@ def create(scene, out_bucket, bands=None, expression=None, output_uid=None):
         meta.update(nodata=0,
                     count=nb_bands,
                     interleave='pixel',
-                    PHOTOMETRIC='MINISBLACK' if expression else 'RGB',
+                    compress='LZW',
+                    photometric='MINISBLACK' if expression else 'RGB',
                     dtype=data_type)
 
     sun_elev = meta_data['IMAGE_ATTRIBUTES']['SUN_ELEVATION']
 
-    def get_window(band, window):
-
-        out_shape = (1, window.height, window.width)
-
-        band_address = f'{landsat_address}_B{band}.TIF'
-        with rasterio.open(band_address) as src:
-            multi_reflect = meta_data['RADIOMETRIC_RESCALING'].get(f'REFLECTANCE_MULT_BAND_{band}')
-            add_reflect = meta_data['RADIOMETRIC_RESCALING'].get(f'REFLECTANCE_ADD_BAND_{band}')
-            data = src.read(window=window, boundless=True, out_shape=out_shape, indexes=(1))
-            return reflectance.reflectance(data, multi_reflect, add_reflect, sun_elev)
-
     with MemoryFile() as memfile:
         with memfile.open(**meta) as dataset:
-            for window in wind:
-                data = [get_window(band, window) for band in bands]
-                data = np.stack(data)
-                if expression:
-                    ctx = {}
-                    for bdx, b in enumerate(bands):
-                        ctx['b{}'.format(b)] = data[bdx]
-                    data = np.array([np.nan_to_num(ne.evaluate(bloc.strip(), local_dict=ctx)) for bloc in rgb])
-                else:
-                    data *= 10000
+            with contextlib.ExitStack() as stack:
+                srcs = [stack.enter_context(rasterio.open(f'{landsat_address}_B{band}.TIF'))
+                        for band in bands]
 
-                dataset.write(data.astype(data_type), window=window)
+                def get_window(idx, window):
+                    band = bands[idx]
+                    multi_reflect = meta_data['RADIOMETRIC_RESCALING'].get(f'REFLECTANCE_MULT_BAND_{band}')
+                    add_reflect = meta_data['RADIOMETRIC_RESCALING'].get(f'REFLECTANCE_ADD_BAND_{band}')
+                    data = srcs[idx].read(window=window, boundless=True, indexes=(1))
+                    return reflectance.reflectance(data, multi_reflect, add_reflect, sun_elev)
+
+                for window in wind:
+                    _worker = partial(get_window, window=window)
+                    with futures.ThreadPoolExecutor(max_workers=3) as executor:
+                        data = np.stack(list(executor.map(_worker, range(len(bands)))))
+                        if expression:
+                            ctx = {}
+                            for bdx, b in enumerate(bands):
+                                ctx['b{}'.format(b)] = data[bdx]
+                            data = np.array([np.nan_to_num(ne.evaluate(bloc.strip(), local_dict=ctx)) for bloc in rgb])
+                        else:
+                            data *= 10000
+
+                        dataset.write(data.astype(data_type), window=window)
 
         params = {
             'ACL': 'public-read',
@@ -93,8 +95,11 @@ def create(scene, out_bucket, bands=None, expression=None, output_uid=None):
         else:
             params['Metadata']['bands'] = ''.join(map(str, bands))
 
-        key = f'data/landsat/{output_uid}.tif'
+        str_band = ''.join(map(str, bands))
+        prefix = 'Exp' if expression else 'RGB'
+        key = f'data/landsat/{scene}_{prefix}{str_band}.tif'
+
         client = boto3.client('s3')
         client.upload_fileobj(memfile, out_bucket, key, ExtraArgs=params)
 
-    return True
+    return key

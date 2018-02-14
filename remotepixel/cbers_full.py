@@ -2,8 +2,12 @@
 
 import re
 import uuid
+import contextlib
+from functools import partial
+from concurrent import futures
 
 import boto3
+
 import numpy as np
 import numexpr as ne
 
@@ -31,7 +35,7 @@ def create(scene, out_bucket, bands=None, expression=None, output_uid=None):
 
     if bands:
         nb_bands = len(bands)
-        data_type = np.uint16
+        data_type = np.uint8
         if nb_bands != 3:
             raise Exception('RGB combination only')
 
@@ -49,29 +53,30 @@ def create(scene, out_bucket, bands=None, expression=None, output_uid=None):
         meta.update(nodata=0,
                     count=nb_bands,
                     interleave='pixel',
-                    PHOTOMETRIC='MINISBLACK' if expression else 'RGB',
+                    compress='LZW',
+                    photometric='MINISBLACK' if expression else 'RGB',
                     dtype=data_type)
-
-    def get_window(band, window):
-        out_shape = (1, window.height, window.width)
-        band_address = f'{cbers_address}/{scene}_BAND{band}.tif'
-        with rasterio.open(band_address) as src:
-            return src.read(window=window, boundless=True, out_shape=out_shape, indexes=(1))
 
     with MemoryFile() as memfile:
         with memfile.open(**meta) as dataset:
-            for window in wind:
-                data = [get_window(band, window) for band in bands]
-                data = np.stack(data)
-                if expression:
-                    ctx = {}
-                    for bdx, b in enumerate(bands):
-                        ctx['b{}'.format(b)] = data[bdx]
-                    data = np.array([np.nan_to_num(ne.evaluate(bloc.strip(), local_dict=ctx)) for bloc in rgb])
-                else:
-                    data *= 10000
+            with contextlib.ExitStack() as stack:
+                srcs = [stack.enter_context(rasterio.open(f'{cbers_address}/{scene}_BAND{band}.tif'))
+                        for band in bands]
 
-                dataset.write(data.astype(data_type), window=window)
+                def get_window(idx, window):
+                    return srcs[idx].read(window=window, boundless=True, indexes=(1))
+
+                for window in wind:
+                    _worker = partial(get_window, window=window)
+                    with futures.ThreadPoolExecutor(max_workers=3) as executor:
+                        data = np.stack(list(executor.map(_worker, range(len(bands)))))
+                        if expression:
+                            ctx = {}
+                            for bdx, b in enumerate(bands):
+                                ctx['b{}'.format(b)] = data[bdx]
+                            data = np.array([np.nan_to_num(ne.evaluate(bloc.strip(), local_dict=ctx)) for bloc in rgb])
+
+                        dataset.write(data.astype(data_type), window=window)
 
         params = {
             'ACL': 'public-read',
@@ -84,8 +89,10 @@ def create(scene, out_bucket, bands=None, expression=None, output_uid=None):
         else:
             params['Metadata']['bands'] = ''.join(map(str, bands))
 
-        key = f'data/cbers/{output_uid}.tif'
+        str_band = ''.join(map(str, bands))
+        prefix = 'Exp' if expression else 'RGB'
+        key = f'data/cbers/{scene}_{prefix}{str_band}.tif'
         client = boto3.client('s3')
         client.upload_fileobj(memfile, out_bucket, key, ExtraArgs=params)
 
-    return True
+    return key

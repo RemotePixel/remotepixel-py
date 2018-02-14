@@ -35,8 +35,9 @@ setup(name='remotepixel',
           "numpy",
           "Pillow",
           "mercantile",
-          "rasterio[s3]>=1.0a11",
-          "rio-toa"
+          "rasterio[s3]>=1.0a12",
+          "rio-toa",
+          "numexpr"
       ],
       extras_require={
           'test': ['pytest', 'pytest-cov', 'codecov'],

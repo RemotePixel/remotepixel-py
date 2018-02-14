@@ -1,7 +1,6 @@
 """remotepixel.l8_full"""
 
 import re
-import uuid
 import contextlib
 from functools import partial
 from concurrent import futures
@@ -21,11 +20,9 @@ np.seterr(divide='ignore', invalid='ignore')
 CBERS_BUCKET = 's3://cbers-pds'
 
 
-def create(scene, out_bucket, bands=None, expression=None, output_uid=None):
+def create(scene, out_bucket, bands=None, expression=None):
     """
     """
-    if not output_uid:
-        output_uid = str(uuid.uuid1())
 
     scene_params = utils.cbers_parse_scene_id(scene)
     cbers_address = f'{CBERS_BUCKET}/{scene_params["key"]}'

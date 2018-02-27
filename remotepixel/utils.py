@@ -1,5 +1,6 @@
 import os
 import re
+import json
 import datetime
 
 from urllib.request import urlopen
@@ -11,6 +12,8 @@ from rasterio.enums import Resampling
 from rasterio import warp
 
 from rio_toa import toa_utils
+
+from remotepixel import aws
 
 
 def get_colormap():
@@ -65,6 +68,23 @@ def linear_rescale(image, in_range=[0, 16000], out_range=[1, 255]):
     image = image / float(imax - imin)
 
     return (image * (omax - omin) + omin)
+
+
+def zeroPad(n, l):
+    """ Add leading 0
+    """
+    return str(n).zfill(l)
+
+
+def sentinel2_get_info(bucket, scene_path, request_pays=False):
+    """return Sentinel metadata
+    """
+    data = json.loads(aws.get_object(bucket, f'{scene_path}/tileInfo.json',
+                                     request_pays=request_pays))
+    return {
+        'sat': data['productName'][0:3],
+        'coverage': data.get('dataCoveragePercentage'),
+        'cloud_coverage': data.get('cloudyPixelPercentage')}
 
 
 def landsat_get_mtl(sceneid):

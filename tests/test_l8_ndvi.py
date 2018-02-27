@@ -28,6 +28,7 @@ def test_point_valid(landsat_get_mtl, monkeypatch):
     expectedContent = {
         "cloud": 26.70,
         "date": '2017-08-13',
+        "scene": landsat_scene_c1,
         "ndvi": 0.7174432277679443}
 
     assert l8_ndvi.point(landsat_scene_c1, coords, expression) == expectedContent
@@ -47,6 +48,7 @@ def test_point_validZero(landsat_get_mtl, monkeypatch):
     expectedContent = {
         "cloud": 26.70,
         "date": '2017-08-13',
+        "scene": landsat_scene_c1,
         "ndvi": 0.}
 
     assert l8_ndvi.point(landsat_scene_c1, coords, expression) == expectedContent

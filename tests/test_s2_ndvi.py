@@ -16,13 +16,16 @@ def test_point_valid(sentinel2_get_info, monkeypatch):
     """
     monkeypatch.setattr(s2_ndvi, 'SENTINEL_BUCKET', sentinel_bucket)
     sentinel2_get_info.return_value = {
-        'cloud_coverage': 5.01}
+        'cloud_coverage': 5.01,
+        'sat': 'S2B'}
 
     expression = '(b08 - b04) / (b08 + b04)'
 
     coords = [-69.6140202938876, 48.25520824803732]
     expectedContent = {
         "date": '2017-07-29',
+        "sat": 'S2B',
+        "scene": sentinel_scene,
         "cloud": 5.01,
         "ndvi": 0.15250335699213505}
 

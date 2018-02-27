@@ -52,6 +52,7 @@ def point(scene, coordinates, expression):
 
     return {
         'ndvi': ratio,
+        'scene': scene,
         'date': date}
 
 

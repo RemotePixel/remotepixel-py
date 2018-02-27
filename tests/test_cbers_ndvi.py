@@ -17,6 +17,7 @@ def test_point_valid(monkeypatch):
     coords = [53.9097, 5.3674]
     expectedContent = {
         "date": '2017-11-21',
+        'scene': CBERS_SCENE,
         "ndvi": -0.1320754716981132}
 
     assert cbers_ndvi.point(CBERS_SCENE, coords, expression) == expectedContent

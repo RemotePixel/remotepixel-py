@@ -55,6 +55,8 @@ def point(scene, coordinates, expression):
     return {
         'ndvi': ratio,
         'date': date,
+        'sat': scene_info['sat'],
+        'scene': scene,
         'cloud': scene_info['cloud_coverage']}
 
 

@@ -16,7 +16,7 @@ from rio_toa import toa_utils
 def get_colormap():
     """
     """
-    cmap_file = os.path.join(os.path.dirname(__file__), 'cmap.txt')
+    cmap_file = os.path.join(os.path.dirname(__file__), 'data', 'cmap.txt')
     with open(cmap_file) as cmap:
         lines = cmap.read().splitlines()
         colormap = [list(map(int, line.split())) for line in lines if not line.startswith('#')][1:]
@@ -38,7 +38,7 @@ def get_area(address, bbox, img_size):
                           indexes=1,
                           resampling=Resampling.bilinear)
 
-        return matrix
+        return np.expand_dims(matrix, axis=0)
 
 
 def get_overview(address, ovrSize):
@@ -190,9 +190,6 @@ def sentinel_parse_scene_id(sceneid):
     match = re.match(sentinel_pattern, sceneid, re.IGNORECASE)
     if match:
         meta = match.groupdict()
-
-    if not meta:
-        raise ValueError('Could not match {sceneid}')
 
     utm = meta['utm']
     sq = meta['sq']

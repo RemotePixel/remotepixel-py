@@ -30,7 +30,7 @@ setup(name='remotepixel',
       include_package_data=True,
       zip_safe=False,
       python_requires='~=3.6',
-      package_data={'remotepixel': ['cmap.txt']},
+      package_data={'remotepixel': ['data/cmap.txt']},
       install_requires=[
           "numpy",
           "Pillow",

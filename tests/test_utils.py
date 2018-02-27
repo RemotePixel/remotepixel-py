@@ -158,3 +158,34 @@ def test_landsat_get_mtl_invalid(urlopen):
     urlopen.return_value.read.return_value = {}
     with pytest.raises(Exception):
         utils.landsat_get_mtl('LC08_L1TP_016037_20170813_20170814_01_RT')
+
+
+def test_cbers_id_invalid():
+    """
+    Should raise an error with invalid sceneid
+    """
+
+    scene = 'CBERS_4_MUX_20171121_057_094'
+    with pytest.raises(ValueError):
+        utils.cbers_parse_scene_id(scene)
+
+
+def test_cbers_id_valid():
+    """Should work as expected (parse cbers scene id)
+    """
+
+    scene = 'CBERS_4_MUX_20171121_057_094_L2'
+    expected_content = {
+        'acquisitionDay': '21',
+        'acquisitionMonth': '11',
+        'acquisitionYear': '2017',
+        'intrument': 'MUX',
+        'key': 'CBERS4/MUX/057/094/CBERS_4_MUX_20171121_057_094_L2',
+        'path': '057',
+        'processingCorrectionLevel': 'L2',
+        'row': '094',
+        'satellite': '4',
+        'scene': 'CBERS_4_MUX_20171121_057_094_L2',
+        'sensor': 'CBERS'}
+
+    assert utils.cbers_parse_scene_id(scene) == expected_content

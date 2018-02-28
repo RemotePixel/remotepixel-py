@@ -29,7 +29,7 @@ def point(scene, coordinates, expression):
 
     scene_params = utils.sentinel_parse_scene_id(scene)
     sentinel_address = f'{SENTINEL_BUCKET}/{scene_params["key"]}'
-    scene_info = utils.sentinel2_get_info(os.path.basename(SENTINEL_BUCKET), sentinel_address)
+    scene_info = utils.sentinel2_get_info(os.path.basename(SENTINEL_BUCKET), scene_params["key"])
 
     addresses = [f'{sentinel_address}/B{band}.jp2' for band in bands]
 

@@ -87,7 +87,7 @@ def create(scene, out_bucket, bands=None, expression=None):
         params = {
             'ACL': 'public-read',
             'Metadata': {
-                'scene': 'scene'},
+                'scene': scene},
             'ContentType': 'image/tiff'}
 
         if expression:

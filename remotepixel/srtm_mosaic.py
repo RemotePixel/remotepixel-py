@@ -1,8 +1,6 @@
-"""remotepixel.srtm_mosaic.py"""
+"""remotepixel.srtm_mosaic"""
 
-import uuid
 import zlib
-import boto3
 import contextlib
 from concurrent import futures
 
@@ -30,42 +28,29 @@ def worker(tile):
         return ''
 
 
-def create(tiles, out_bucket, uid=None):
+def create(tiles):
     """
     """
-    if not uid:
-        uid = str(uuid.uuid1())
-
-    if len(tiles) > 8:
-        return False
-
     with futures.ThreadPoolExecutor(max_workers=8) as executor:
-        responses = list(executor.map(worker, tiles))
+        responses = executor.map(worker, tiles)
 
     with contextlib.ExitStack() as stack:
         sources = [stack.enter_context(rasterio.open(tile)) for tile in responses if tile]
         dest, output_transform = merge(sources, nodata=-32767)
 
-        with MemoryFile() as memfile:
-            with memfile.open(driver='GTiff',
-                              count=1,
-                              dtype=np.int16,
-                              nodata=-32767,
-                              height=dest.shape[1],
-                              width=dest.shape[2],
-                              compress='DEFLATE',
-                              crs='epsg:4326',
-                              transform=output_transform) as dataset:
-                                dataset.write(dest)
+    meta = {
+        'driver': 'GTiff',
+        'count': 1,
+        'dtype': np.int16,
+        'nodata': -32767,
+        'height': dest.shape[1],
+        'width': dest.shape[2],
+        'compress': 'DEFLATE',
+        'crs': 'epsg:4326',
+        'transform': output_transform}
 
-            params = {
-                'ACL': 'public-read',
-                'Metadata': {
-                    'uuid': uid},
-                'ContentType': 'image/tiff'}
+    memfile = MemoryFile()
+    with memfile.open(**meta) as dataset:
+        dataset.write(dest)
 
-            key = f'data/srtm/{uid}.tif'
-            client = boto3.client('s3')
-            client.upload_fileobj(memfile, out_bucket, key, ExtraArgs=params)
-
-    return key
+    return memfile

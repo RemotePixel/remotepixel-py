@@ -31,4 +31,5 @@ def test_area_valid(monkeypatch):
     expression = '(b8 - b7) / (b8 + b7)'
     bbox = [53.0859375, 5.266007882805496, 53.4375, 5.615985819155334]
 
-    assert cbers_ndvi.area(CBERS_SCENE, bbox, expression)
+    res = cbers_ndvi.area(CBERS_SCENE, bbox, expression)
+    assert res['date'] == '2017-11-21'

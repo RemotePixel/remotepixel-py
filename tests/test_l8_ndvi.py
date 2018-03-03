@@ -66,4 +66,6 @@ def test_area_valid(landsat_get_mtl, monkeypatch):
     expression = '(b5 - b4) / (b5 + b4)'
     bbox = [-80.5, 32.5, -79.5, 33.5]
 
-    assert l8_ndvi.area(landsat_scene_c1, bbox, expression)
+    res = l8_ndvi.area(landsat_scene_c1, bbox, expression)
+    assert res['cloud'] == 26.70
+    assert res['date'] == '2017-08-13'

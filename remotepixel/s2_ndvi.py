@@ -61,7 +61,7 @@ def point(scene, coordinates, expression):
         'cloud': scene_info['cloud_coverage']}
 
 
-def area(scene, bbox, expression):
+def area(scene, bbox, expression, expression_range=[-1, 1]):
     """
     """
     img_size = 512
@@ -70,6 +70,8 @@ def area(scene, bbox, expression):
 
     scene_params = utils.sentinel_parse_scene_id(scene)
     sentinel_address = f'{SENTINEL_BUCKET}/{scene_params["key"]}'
+    scene_info = utils.sentinel2_get_info(os.path.basename(SENTINEL_BUCKET), scene_params["key"])
+
     addresses = [f'{sentinel_address}/B{band}.jp2' for band in bands]
 
     _worker = partial(utils.get_area, bbox=bbox, img_size=img_size)
@@ -82,7 +84,7 @@ def area(scene, bbox, expression):
         ratio = np.nan_to_num(ne.evaluate(expression, local_dict=ctx))
 
     mask = np.all(ratio != 0, axis=0).astype(np.uint8) * 255
-    ratio = np.where(mask, utils.linear_rescale(ratio, in_range=[-1, 1], out_range=[0, 255]), 0).astype(np.uint8)
+    ratio = np.where(mask, utils.linear_rescale(ratio, in_range=expression_range, out_range=[0, 255]), 0).astype(np.uint8)
 
     cmap = list(np.array(utils.get_colormap()).flatten())
     img = Image.fromarray(ratio, 'P')
@@ -93,4 +95,13 @@ def area(scene, bbox, expression):
     img.save(sio, 'jpeg', subsampling=0, quality=100)
     sio.seek(0)
 
-    return base64.b64encode(sio.getvalue()).decode()
+    date = scene_params['acquisitionYear'] + \
+        '-' + scene_params['acquisitionMonth'] + \
+        '-' + scene_params['acquisitionDay']
+
+    return {
+        'ndvi': base64.b64encode(sio.getvalue()).decode(),
+        'date': date,
+        'sat': scene_info['sat'],
+        'scene': scene,
+        'cloud': scene_info['cloud_coverage']}

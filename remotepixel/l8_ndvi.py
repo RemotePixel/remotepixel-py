@@ -61,7 +61,7 @@ def point(scene, coordinates, expression):
         'cloud': meta_data['IMAGE_ATTRIBUTES']['CLOUD_COVER']}
 
 
-def area(scene, bbox, expression):
+def area(scene, bbox, expression, expression_range=[-1, 1]):
     """
     """
     img_size = 512
@@ -93,7 +93,7 @@ def area(scene, bbox, expression):
         ratio = np.nan_to_num(ne.evaluate(expression, local_dict=ctx))
 
     mask = np.all(ratio != 0, axis=0).astype(np.uint8) * 255
-    ratio = np.where(mask, utils.linear_rescale(ratio, in_range=[-1, 1], out_range=[0, 255]), 0).astype(np.uint8)
+    ratio = np.where(mask, utils.linear_rescale(ratio, in_range=expression_range, out_range=[0, 255]), 0).astype(np.uint8)
 
     cmap = list(np.array(utils.get_colormap()).flatten())
     img = Image.fromarray(ratio, 'P')
@@ -101,7 +101,11 @@ def area(scene, bbox, expression):
     img = img.convert('RGB')
 
     sio = BytesIO()
-    img.save(sio, 'jpeg', subsampling=0, quality=100)
+    img.save(sio, 'jpeg', quality=95)
     sio.seek(0)
 
-    return base64.b64encode(sio.getvalue()).decode()
+    return {
+        'ndvi': base64.b64encode(sio.getvalue()).decode(),
+        'date': scene_params['date'],
+        'scene': scene,
+        'cloud': meta_data['IMAGE_ATTRIBUTES']['CLOUD_COVER']}

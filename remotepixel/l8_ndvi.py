@@ -61,10 +61,10 @@ def point(scene, coordinates, expression):
         'cloud': meta_data['IMAGE_ATTRIBUTES']['CLOUD_COVER']}
 
 
-def area(scene, bbox, expression, expression_range=[-1, 1]):
+def area(scene, bbox, expression, expression_range=[-1, 1], bbox_crs='epsg:4326', out_crs='epsg:3857'):
     """
     """
-    img_size = 512
+    max_img_size = 512
 
     bands = tuple(set(re.findall(r'b(?P<bands>[0-9]{1,2})', expression)))
 
@@ -72,7 +72,7 @@ def area(scene, bbox, expression, expression_range=[-1, 1]):
     meta_data = utils.landsat_get_mtl(scene).get('L1_METADATA_FILE')
     landsat_address = f'{LANDSAT_BUCKET}/{scene_params["key"]}'
 
-    def worker(band, bbox):
+    def worker(band):
         """
         """
         address = f'{landsat_address}_B{band}.TIF'
@@ -80,12 +80,11 @@ def area(scene, bbox, expression, expression_range=[-1, 1]):
         multi_reflect = meta_data['RADIOMETRIC_RESCALING'][f'REFLECTANCE_MULT_BAND_{band}']
         add_reflect = meta_data['RADIOMETRIC_RESCALING'][f'REFLECTANCE_ADD_BAND_{band}']
 
-        band = utils.get_area(address, bbox, img_size)
+        band = utils.get_area(address, bbox, max_img_size=max_img_size, bbox_crs=bbox_crs, out_crs=out_crs)
         return reflectance(band, multi_reflect, add_reflect, sun_elev, src_nodata=0)
 
-    _worker = partial(worker, bbox=bbox)
     with futures.ThreadPoolExecutor(max_workers=3) as executor:
-        data = np.concatenate(list(executor.map(_worker, bands)))
+        data = np.concatenate(list(executor.map(worker, bands)))
 
         ctx = {}
         for bdx, b in enumerate(bands):

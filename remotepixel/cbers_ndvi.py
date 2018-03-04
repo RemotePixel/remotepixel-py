@@ -56,10 +56,10 @@ def point(scene, coordinates, expression):
         'date': date}
 
 
-def area(scene, bbox, expression, expression_range=[-1, 1]):
+def area(scene, bbox, expression, expression_range=[-1, 1], bbox_crs='epsg:4326', out_crs='epsg:3857'):
     """
     """
-    img_size = 512
+    max_img_size = 512
 
     bands = tuple(set(re.findall(r'b(?P<bands>[0-9]{1,2})', expression)))
 
@@ -67,7 +67,7 @@ def area(scene, bbox, expression, expression_range=[-1, 1]):
     cbers_address = f'{CBERS_BUCKET}/{scene_params["key"]}'
     addresses = ['{}/{}_BAND{}.tif'.format(cbers_address, scene, band) for band in bands]
 
-    _worker = partial(utils.get_area, bbox=bbox, img_size=img_size)
+    _worker = partial(utils.get_area, bbox=bbox, max_img_size=max_img_size, bbox_crs=bbox_crs, out_crs=out_crs)
     with futures.ThreadPoolExecutor(max_workers=3) as executor:
         data = np.concatenate(list(executor.map(_worker, addresses)))
 

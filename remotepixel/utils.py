@@ -8,8 +8,9 @@ from urllib.request import urlopen
 import numpy as np
 
 import rasterio
+from rasterio.vrt import WarpedVRT
 from rasterio.enums import Resampling
-from rasterio import warp
+from rasterio.warp import transform_bounds
 
 from rio_toa import toa_utils
 
@@ -27,34 +28,34 @@ def get_colormap():
     return colormap
 
 
-def get_area(address, bbox, img_size):
+def get_area(address, bbox, max_img_size=512, bbox_crs='epsg:4326', out_crs='epsg:3857', nodata=0):
     """
     """
+    bounds = transform_bounds(bbox_crs, out_crs, *bbox, densify_pts=21)
     with rasterio.open(address) as src:
-        crs_bounds = warp.transform_bounds('EPSG:4326', src.crs, *bbox)
-        window = src.window(*crs_bounds)
-        width = round(window.width) if window.width < img_size else img_size
-        height = round(window.height) if window.height < img_size else img_size
+        with WarpedVRT(src, dst_crs=out_crs, resampling=Resampling.bilinear,
+                       src_nodata=nodata, dst_nodata=nodata) as vrt:
+            window = vrt.window(*bounds, precision=21)
+            width = round(window.width) if window.width < max_img_size else max_img_size
+            height = round(window.height) if window.height < max_img_size else max_img_size
+            matrix = vrt.read(window=window,
+                              boundless=True,
+                              out_shape=(1, height, width),
+                              indexes=[1],
+                              resampling=Resampling.bilinear)
 
-        matrix = src.read(window=window,
-                          out_shape=(1, height, width),
-                          indexes=1,
-                          resampling=Resampling.bilinear)
-
-        return np.expand_dims(matrix, axis=0)
+        return matrix
 
 
 def get_overview(address, ovrSize):
     """
     """
-
-    out_shape = (1, ovrSize, ovrSize)
     with rasterio.open(address) as src:
-        data = src.read(indexes=(1),
-                        out_shape=out_shape,
-                        resampling=Resampling.bilinear)
+        matrix = src.read(indexes=[1],
+                          out_shape=(1, ovrSize, ovrSize),
+                          resampling=Resampling.bilinear)
 
-        return np.expand_dims(data, axis=0)
+        return matrix
 
 
 def linear_rescale(image, in_range=[0, 16000], out_range=[1, 255]):

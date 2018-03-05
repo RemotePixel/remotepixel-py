@@ -70,6 +70,8 @@ def area(scene, bbox, expression, expression_range=[-1, 1], bbox_crs='epsg:4326'
     _worker = partial(utils.get_area, bbox=bbox, max_img_size=max_img_size, bbox_crs=bbox_crs, out_crs=out_crs)
     with futures.ThreadPoolExecutor(max_workers=3) as executor:
         data = np.concatenate(list(executor.map(_worker, addresses)))
+        if not np.any(data):
+            raise Exception('No valid data in array')
 
         ctx = {}
         for bdx, b in enumerate(bands):

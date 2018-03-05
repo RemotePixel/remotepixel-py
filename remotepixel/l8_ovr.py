@@ -35,7 +35,7 @@ def worker(band, landsat_address, meta, ovr_size):
     return reflectance(matrix, multi_reflect, add_reflect, sun_elev, src_nodata=0)
 
 
-def create(scene, bands=None, expression=None, img_format='jpeg', ovrSize=512):
+def create(scene, bands=None, expression=None, expression_range=[-1, 1], img_format='jpeg', ovrSize=512):
     """
     """
 
@@ -62,6 +62,7 @@ def create(scene, bands=None, expression=None, img_format='jpeg', ovrSize=512):
     _worker = partial(worker, landsat_address=landsat_address, meta=meta_data, ovr_size=ovrSize)
     with futures.ThreadPoolExecutor(max_workers=3) as executor:
         data = np.concatenate(list(executor.map(_worker, bands)))
+        mask = np.all(data != 0, axis=0).astype(np.uint8) * 255
 
         if expression:
             ctx = {}
@@ -69,10 +70,8 @@ def create(scene, bands=None, expression=None, img_format='jpeg', ovrSize=512):
                 ctx['b{}'.format(b)] = data[bdx]
             data = np.array([np.nan_to_num(ne.evaluate(bloc.strip(), local_dict=ctx)) for bloc in rgb])
 
-        mask = np.all(data != 0, axis=0).astype(np.uint8) * 255
-
         for band in range(data.shape[0]):
-            imgRange = np.percentile(data[band][mask > 0], (2, 98)).tolist()
+            imgRange = expression_range if expression else np.percentile(data[band][mask > 0], (2, 98)).tolist()
             data[band] = np.where(mask, utils.linear_rescale(data[band], in_range=imgRange, out_range=[0, 255]), 0)
 
     data = data.squeeze()
@@ -83,15 +82,15 @@ def create(scene, bands=None, expression=None, img_format='jpeg', ovrSize=512):
         cmap = list(np.array(utils.get_colormap()).flatten())
         img = Image.fromarray(data.astype(np.uint8), 'L')
         img.putpalette(cmap)
+        img = img.convert('RGB')
 
     sio = BytesIO()
     if img_format == 'jpeg':
-        img = img.convert('RGB')
-        img.save(sio, 'jpeg', subsampling=0, quality=95)
+        img.save(sio, 'jpeg', quality=95)
     else:
         mask_img = Image.fromarray(mask)
         img.putalpha(mask_img)
-        img.save(sio, 'png', compress_level=0)
+        img.save(sio, 'png', compress_level=1)
 
     sio.seek(0)
     return base64.b64encode(sio.getvalue()).decode()

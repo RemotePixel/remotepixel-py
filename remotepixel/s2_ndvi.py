@@ -79,13 +79,13 @@ def area(scene, bbox, expression, expression_range=[-1, 1], bbox_crs='epsg:4326'
         data = np.concatenate(list(executor.map(_worker, addresses)))
         if not np.any(data):
             raise Exception('No valid data in array')
+        mask = np.all(data != 0, axis=0).astype(np.uint8) * 255
 
         ctx = {}
         for bdx, b in enumerate(bands):
             ctx['b{}'.format(b)] = data[bdx]
         ratio = np.nan_to_num(ne.evaluate(expression, local_dict=ctx))
 
-    mask = np.all(ratio != 0, axis=0).astype(np.uint8) * 255
     ratio = np.where(mask, utils.linear_rescale(ratio, in_range=expression_range, out_range=[0, 255]), 0).astype(np.uint8)
 
     cmap = list(np.array(utils.get_colormap()).flatten())

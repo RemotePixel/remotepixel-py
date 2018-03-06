@@ -30,13 +30,14 @@ setup(name='remotepixel',
       include_package_data=True,
       zip_safe=False,
       python_requires='~=3.6',
-      package_data={'remotepixel': ['cmap.txt']},
+      package_data={'remotepixel': ['data/cmap.txt']},
       install_requires=[
           "numpy",
           "Pillow",
           "mercantile",
-          "rasterio[s3]>=1.0a11",
-          "rio-toa"
+          "rasterio[s3]>=1.0a12",
+          "rio-toa",
+          "numexpr"
       ],
       extras_require={
           'test': ['pytest', 'pytest-cov', 'codecov'],

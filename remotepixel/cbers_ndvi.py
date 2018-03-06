@@ -13,13 +13,12 @@ from PIL import Image
 
 import rasterio
 from rasterio import warp
-from rio_toa.reflectance import reflectance
 
 from remotepixel import utils
 
 np.seterr(divide='ignore', invalid='ignore')
 
-LANDSAT_BUCKET = 's3://landsat-pds'
+CBERS_BUCKET = 's3://cbers-pds'
 
 
 def point(scene, coordinates, expression):
@@ -27,38 +26,34 @@ def point(scene, coordinates, expression):
     """
     bands = tuple(set(re.findall(r'b(?P<bands>[0-9]{1,2})', expression)))
 
-    scene_params = utils.landsat_parse_scene_id(scene)
-    meta_data = utils.landsat_get_mtl(scene).get('L1_METADATA_FILE')
-    landsat_address = f'{LANDSAT_BUCKET}/{scene_params["key"]}'
+    scene_params = utils.cbers_parse_scene_id(scene)
+    cbers_address = f'{CBERS_BUCKET}/{scene_params["key"]}'
+    addresses = ['{}/{}_BAND{}.tif'.format(cbers_address, scene, band) for band in bands]
 
-    def worker(band, coordinates):
+    def worker(address):
         """
         """
-        address = f'{landsat_address}_B{band}.TIF'
-        sun_elev = meta_data['IMAGE_ATTRIBUTES']['SUN_ELEVATION']
-        multi_reflect = meta_data['RADIOMETRIC_RESCALING'][f'REFLECTANCE_MULT_BAND_{band}']
-        add_reflect = meta_data['RADIOMETRIC_RESCALING'][f'REFLECTANCE_ADD_BAND_{band}']
-
         with rasterio.open(address) as band:
             lon_srs, lat_srs = warp.transform('EPSG:4326', band.crs, [coordinates[0]], [coordinates[1]])
             point = list(band.sample([(lon_srs[0], lat_srs[0])]))[0]
+        return point[0]
 
-        return reflectance(point, multi_reflect, add_reflect, sun_elev, src_nodata=0)[0]
-
-    _worker = partial(worker, coordinates=coordinates)
     with futures.ThreadPoolExecutor(max_workers=3) as executor:
-        data = list(executor.map(_worker, bands))
+        data = list(executor.map(worker, addresses))
 
         ctx = {}
         for bdx, b in enumerate(bands):
             ctx['b{}'.format(b)] = data[bdx]
         ratio = np.nan_to_num(ne.evaluate(expression, local_dict=ctx))
 
+    date = scene_params['acquisitionYear'] + \
+        '-' + scene_params['acquisitionMonth'] + \
+        '-' + scene_params['acquisitionDay']
+
     return {
         'ndvi': ratio,
-        'date': scene_params['date'],
         'scene': scene,
-        'cloud': meta_data['IMAGE_ATTRIBUTES']['CLOUD_COVER']}
+        'date': date}
 
 
 def area(scene, bbox, expression, expression_range=[-1, 1], bbox_crs='epsg:4326', out_crs='epsg:3857'):
@@ -68,23 +63,13 @@ def area(scene, bbox, expression, expression_range=[-1, 1], bbox_crs='epsg:4326'
 
     bands = tuple(set(re.findall(r'b(?P<bands>[0-9]{1,2})', expression)))
 
-    scene_params = utils.landsat_parse_scene_id(scene)
-    meta_data = utils.landsat_get_mtl(scene).get('L1_METADATA_FILE')
-    landsat_address = f'{LANDSAT_BUCKET}/{scene_params["key"]}'
+    scene_params = utils.cbers_parse_scene_id(scene)
+    cbers_address = f'{CBERS_BUCKET}/{scene_params["key"]}'
+    addresses = ['{}/{}_BAND{}.tif'.format(cbers_address, scene, band) for band in bands]
 
-    def worker(band):
-        """
-        """
-        address = f'{landsat_address}_B{band}.TIF'
-        sun_elev = meta_data['IMAGE_ATTRIBUTES']['SUN_ELEVATION']
-        multi_reflect = meta_data['RADIOMETRIC_RESCALING'][f'REFLECTANCE_MULT_BAND_{band}']
-        add_reflect = meta_data['RADIOMETRIC_RESCALING'][f'REFLECTANCE_ADD_BAND_{band}']
-
-        band = utils.get_area(address, bbox, max_img_size=max_img_size, bbox_crs=bbox_crs, out_crs=out_crs)
-        return reflectance(band, multi_reflect, add_reflect, sun_elev, src_nodata=0)
-
+    _worker = partial(utils.get_area, bbox=bbox, max_img_size=max_img_size, bbox_crs=bbox_crs, out_crs=out_crs)
     with futures.ThreadPoolExecutor(max_workers=3) as executor:
-        data = np.concatenate(list(executor.map(worker, bands)))
+        data = np.concatenate(list(executor.map(_worker, addresses)))
         if not np.any(data):
             raise Exception('No valid data in array')
         mask = np.all(data != 0, axis=0).astype(np.uint8) * 255
@@ -102,11 +87,14 @@ def area(scene, bbox, expression, expression_range=[-1, 1], bbox_crs='epsg:4326'
     img = img.convert('RGB')
 
     sio = BytesIO()
-    img.save(sio, 'jpeg', quality=95)
+    img.save(sio, 'jpeg', subsampling=0, quality=100)
     sio.seek(0)
+
+    date = scene_params['acquisitionYear'] + \
+        '-' + scene_params['acquisitionMonth'] + \
+        '-' + scene_params['acquisitionDay']
 
     return {
         'ndvi': base64.b64encode(sio.getvalue()).decode(),
-        'date': scene_params['date'],
         'scene': scene,
-        'cloud': meta_data['IMAGE_ATTRIBUTES']['CLOUD_COVER']}
+        'date': date}

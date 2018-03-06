@@ -1,70 +1,56 @@
-"""remotepixel.srtm_mosaic.py"""
+"""remotepixel.srtm_mosaic"""
 
-import os
 import zlib
-import boto3
+import contextlib
 from concurrent import futures
-from datetime import datetime, timedelta
 
 import numpy as np
 
-import rasterio as rio
+import rasterio
 from rasterio.merge import merge
 from rasterio.io import MemoryFile
 
-from urllib.request import urlopen
+from remotepixel import aws
 
-srtm_site = 'https://s3.amazonaws.com/elevation-tiles-prod/skadi'
+SRTM_BUCKET = 'elevation-tiles-prod'
 
 
 def worker(tile):
     """
     """
-
     try:
         outpath = f'/tmp/{tile}.hgt'
-        url = f'{srtm_site}/{tile[0:3]}/{tile}.hgt.gz'
+        key = f'skadi/{tile[0:3]}/{tile}.hgt.gz'
         with open(outpath, 'wb') as f:
-            f.write(zlib.decompress(urlopen(url).read(), zlib.MAX_WBITS | 16))
+            f.write(zlib.decompress(aws.get_object(SRTM_BUCKET, key), zlib.MAX_WBITS | 16))
         return outpath
     except:
-        return None
+        return ''
 
 
-def create(tiles, uuid, bucket):
+def create(tiles):
     """
     """
-
-    if len(tiles) > 8:
-        return False
-
     with futures.ThreadPoolExecutor(max_workers=8) as executor:
-        responses = list(executor.map(worker, tiles))
+        responses = executor.map(worker, tiles)
 
-    sources = [rio.open(tile) for tile in responses if tile]
-    dest, output_transform = merge(sources, nodata=-32767)
+    with contextlib.ExitStack() as stack:
+        sources = [stack.enter_context(rasterio.open(tile)) for tile in responses if tile]
+        dest, output_transform = merge(sources, nodata=-32767)
 
-    with MemoryFile() as memfile:
-        with memfile.open(driver='GTiff',
-                          count=1,
-                          dtype=np.int16,
-                          nodata=-32767,
-                          height=dest.shape[1],
-                          width=dest.shape[2],
-                          compress='DEFLATE',
-                          crs='epsg:4326',
-                          transform=output_transform) as dataset:
-                            dataset.write(dest)
+    meta = {
+        'driver': 'GTiff',
+        'count': 1,
+        'dtype': np.int16,
+        'nodata': -32767,
+        'height': dest.shape[1],
+        'width': dest.shape[2],
+        'compress': 'DEFLATE',
+        'crs': 'epsg:4326',
+        'transform': output_transform}
 
-        client = boto3.client('s3')
-        expiration = datetime.now() + timedelta(days=7)
+    memfile = MemoryFile()
+    with memfile.open(**meta) as dataset:
+        dataset.write(dest)
 
-        client.put_object(
-            ACL='public-read',
-            Bucket=bucket,
-            Key=os.path.join('data', 'srtm', '{}.tif'.format(uuid)),
-            Expires=expiration,
-            Body=memfile,
-            ContentType='image/tiff')
-
-    return True
+    return memfile

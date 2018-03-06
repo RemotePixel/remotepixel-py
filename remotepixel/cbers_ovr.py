@@ -12,27 +12,12 @@ import numexpr as ne
 from PIL import Image
 
 from rasterio.plot import reshape_as_image
-from rio_toa.reflectance import reflectance
 
 from remotepixel import utils
 
 np.seterr(divide='ignore', invalid='ignore')
 
-LANDSAT_BUCKET = 's3://landsat-pds'
-
-
-def worker(band, landsat_address, meta, ovr_size):
-    """
-    """
-
-    address = f'{landsat_address}_B{band}.TIF'
-
-    sun_elev = meta['IMAGE_ATTRIBUTES']['SUN_ELEVATION']
-    multi_reflect = meta['RADIOMETRIC_RESCALING'][f'REFLECTANCE_MULT_BAND_{band}']
-    add_reflect = meta['RADIOMETRIC_RESCALING'][f'REFLECTANCE_ADD_BAND_{band}']
-
-    matrix = utils.get_overview(address, ovr_size)
-    return reflectance(matrix, multi_reflect, add_reflect, sun_elev, src_nodata=0)
+CBERS_BUCKET = 's3://cbers-pds'
 
 
 def create(scene, bands=None, expression=None, expression_range=[-1, 1], img_format='jpeg', ovrSize=512):
@@ -55,13 +40,13 @@ def create(scene, bands=None, expression=None, expression_range=[-1, 1], img_for
         rgb = expression.split(',')
         nb_bands = len(rgb)
 
-    scene_params = utils.landsat_parse_scene_id(scene)
-    meta_data = utils.landsat_get_mtl(scene).get('L1_METADATA_FILE')
-    landsat_address = f'{LANDSAT_BUCKET}/{scene_params["key"]}'
+    scene_params = utils.cbers_parse_scene_id(scene)
+    cbers_address = f'{CBERS_BUCKET}/{scene_params["key"]}'
+    addresses = ['{}/{}_BAND{}.tif'.format(cbers_address, scene, band) for band in bands]
 
-    _worker = partial(worker, landsat_address=landsat_address, meta=meta_data, ovr_size=ovrSize)
+    worker = partial(utils.get_overview, ovrSize=ovrSize)
     with futures.ThreadPoolExecutor(max_workers=3) as executor:
-        data = np.concatenate(list(executor.map(_worker, bands)))
+        data = np.concatenate(list(executor.map(worker, addresses)))
         mask = np.all(data != 0, axis=0).astype(np.uint8) * 255
 
         if expression:

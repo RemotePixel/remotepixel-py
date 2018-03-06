@@ -1,21 +1,26 @@
 import os
 import re
+import json
 import datetime
 
 from urllib.request import urlopen
 
 import numpy as np
 
-import rasterio as rio
+import rasterio
+from rasterio.vrt import WarpedVRT
 from rasterio.enums import Resampling
+from rasterio.warp import transform_bounds
 
 from rio_toa import toa_utils
+
+from remotepixel import aws
 
 
 def get_colormap():
     """
     """
-    cmap_file = os.path.join(os.path.dirname(__file__), 'cmap.txt')
+    cmap_file = os.path.join(os.path.dirname(__file__), 'data', 'cmap.txt')
     with open(cmap_file) as cmap:
         lines = cmap.read().splitlines()
         colormap = [list(map(int, line.split())) for line in lines if not line.startswith('#')][1:]
@@ -23,13 +28,34 @@ def get_colormap():
     return colormap
 
 
+def get_area(address, bbox, max_img_size=512, bbox_crs='epsg:4326', out_crs='epsg:3857', nodata=0):
+    """
+    """
+    bounds = transform_bounds(bbox_crs, out_crs, *bbox, densify_pts=21)
+    with rasterio.open(address) as src:
+        with WarpedVRT(src, dst_crs=out_crs, resampling=Resampling.bilinear,
+                       src_nodata=nodata, dst_nodata=nodata) as vrt:
+            window = vrt.window(*bounds, precision=21)
+            width = round(window.width) if window.width < max_img_size else max_img_size
+            height = round(window.height) if window.height < max_img_size else max_img_size
+            matrix = vrt.read(window=window,
+                              boundless=True,
+                              out_shape=(1, height, width),
+                              indexes=[1],
+                              resampling=Resampling.bilinear)
+
+        return matrix
+
+
 def get_overview(address, ovrSize):
     """
     """
-    with rio.open(address) as src:
-        matrix = src.read(indexes=1, out_shape=(ovrSize, ovrSize), resampling=Resampling.bilinear).astype(src.profile['dtype'])
+    with rasterio.open(address) as src:
+        matrix = src.read(indexes=[1],
+                          out_shape=(1, ovrSize, ovrSize),
+                          resampling=Resampling.bilinear)
 
-    return matrix
+        return matrix
 
 
 def linear_rescale(image, in_range=[0, 16000], out_range=[1, 255]):
@@ -43,6 +69,23 @@ def linear_rescale(image, in_range=[0, 16000], out_range=[1, 255]):
     image = image / float(imax - imin)
 
     return (image * (omax - omin) + omin)
+
+
+def zeroPad(n, l):
+    """ Add leading 0
+    """
+    return str(n).zfill(l)
+
+
+def sentinel2_get_info(bucket, scene_path, request_pays=False):
+    """return Sentinel metadata
+    """
+    data = json.loads(aws.get_object(bucket, f'{scene_path}/tileInfo.json',
+                                     request_pays=request_pays))
+    return {
+        'sat': data['productName'][0:3],
+        'coverage': data.get('dataCoveragePercentage'),
+        'cloud_coverage': data.get('cloudyPixelPercentage')}
 
 
 def landsat_get_mtl(sceneid):
@@ -169,9 +212,6 @@ def sentinel_parse_scene_id(sceneid):
     if match:
         meta = match.groupdict()
 
-    if not meta:
-        raise ValueError('Could not match {sceneid}')
-
     utm = meta['utm']
     sq = meta['sq']
     lat = meta['lat']
@@ -181,5 +221,42 @@ def sentinel_parse_scene_id(sceneid):
     n = meta['num']
 
     meta['key'] = f'tiles/{utm}/{sq}/{lat}/{year}/{m}/{d}/{n}'
+
+    return meta
+
+
+def cbers_parse_scene_id(sceneid):
+    """Parse CBERS scene id"""
+
+    if not re.match('^CBERS_4_MUX_[0-9]{8}_[0-9]{3}_[0-9]{3}_L[0-9]$', sceneid):
+        raise ValueError('Could not match {}'.format(sceneid))
+
+    cbers_pattern = (
+        r'(?P<sensor>\w{5})'
+        r'_'
+        r'(?P<satellite>[0-9]{1})'
+        r'_'
+        r'(?P<intrument>\w{3})'
+        r'_'
+        r'(?P<acquisitionYear>[0-9]{4})'
+        r'(?P<acquisitionMonth>[0-9]{2})'
+        r'(?P<acquisitionDay>[0-9]{2})'
+        r'_'
+        r'(?P<path>[0-9]{3})'
+        r'_'
+        r'(?P<row>[0-9]{3})'
+        r'_'
+        r'(?P<processingCorrectionLevel>L[0-9]{1})$')
+
+    meta = None
+    match = re.match(cbers_pattern, sceneid, re.IGNORECASE)
+    if match:
+        meta = match.groupdict()
+
+    path = meta['path']
+    row = meta['row']
+    meta['key'] = 'CBERS4/MUX/{}/{}/{}'.format(path, row, sceneid)
+
+    meta['scene'] = sceneid
 
     return meta

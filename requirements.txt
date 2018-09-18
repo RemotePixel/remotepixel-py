@@ -2,6 +2,7 @@ numpy
 Pillow
 mercantile
 boto3
-rasterio[s3]>=1.0a12
+rasterio[s3]~=1.0
 rio-toa
 numexpr
+rio_tiler>=1.0rc2

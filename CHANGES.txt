@@ -1,6 +1,11 @@
 Changes
 =======
 
+2.0.0 (2018-09-18)
+----------------
+- use rio-tiler utils
+- code style
+
 1.0.0 (2018-02-16)
 ----------------
 - Rewrite (add expression and CBERS support)

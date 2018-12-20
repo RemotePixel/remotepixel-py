@@ -1,6 +1,11 @@
 Changes
 =======
 
+2.0.1 (2018-12-20)
+----------------
+- style update
+- pre-commit integration
+
 2.0.0 (2018-09-18)
 ----------------
 - use rio-tiler utils

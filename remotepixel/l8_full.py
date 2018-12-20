@@ -45,14 +45,14 @@ def create(scene, bands=None, expression=None):
         meta = src.meta
         wind = [w for ij, w in src.block_windows(1)]
 
-    meta.update(
-        nodata=0,
-        count=nb_bands,
-        interleave="pixel",
-        compress="LZW",
-        photometric="MINISBLACK" if expression else "RGB",
-        dtype=data_type,
-    )
+        meta.update(
+            nodata=0,
+            count=nb_bands,
+            interleave="pixel",
+            compress="DEFLATE",
+            photometric="MINISBLACK" if nb_bands == 1 else "RGB",
+            dtype=data_type,
+        )
 
     sun_elev = meta_data["IMAGE_ATTRIBUTES"]["SUN_ELEVATION"]
 

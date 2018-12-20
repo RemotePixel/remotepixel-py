@@ -18,7 +18,7 @@ def get_area(
     """Read image part."""
     bounds = transform_bounds(bbox_crs, out_crs, *bbox, densify_pts=21)
 
-    vrt_params = dict(add_alpha=True, dst_crs=out_crs, resampling=Resampling.bilinear)
+    vrt_params = dict(add_alpha=True, crs=out_crs, resampling=Resampling.bilinear)
 
     if nodata is not None:
         vrt_params.update(
@@ -59,7 +59,7 @@ def get_overview(address, ovrSize):
 
 
 def zeroPad(n, l):
-    """ Add leading 0"""
+    """Add leading 0."""
     return str(n).zfill(l)
 
 

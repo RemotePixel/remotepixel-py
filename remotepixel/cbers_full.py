@@ -47,8 +47,8 @@ def create(scene, bands=None, expression=None):
             nodata=0,
             count=nb_bands,
             interleave="pixel",
-            compress="LZW",
-            photometric="MINISBLACK" if expression else "RGB",
+            compress="DEFLATE",
+            photometric="MINISBLACK" if nb_bands == 1 else "RGB",
             dtype=data_type,
         )
 

@@ -1,3 +1,4 @@
+"""Setup for remotepixel-py."""
 
 from setuptools import setup, find_packages
 
@@ -20,15 +21,23 @@ inst_reqs = [
     "numexpr",
 ]
 
-extra_reqs = {"test": ["pytest", "pytest-cov", "mock"]}
-
+extra_reqs = {
+    "test": ["pytest", "pytest-cov", "mock"],
+    "dev": ["pytest", "pytest-cov", "mock", "pre-commit"],
+}
 
 setup(
     name="remotepixel",
     version=version,
     description=u"",
     long_description=u"",
-    classifiers=["Programming Language :: Python :: 3.6"],
+    classifiers=[
+        "Intended Audience :: Information Technology",
+        "Intended Audience :: Science/Research",
+        "License :: OSI Approved :: BSD License",
+        "Programming Language :: Python :: 3.6",
+        "Programming Language :: Python :: 3.7",
+    ],
     keywords="remotepixel AWS lambda Landsat Sentinel SRTM",
     author=u"RemotePixel",
     author_email="contact@remotepixel.ca",

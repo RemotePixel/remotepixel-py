@@ -61,7 +61,7 @@ def point(scene, coordinates, expression):
                 ctx["b{}".format(b)] = data[bdx]
             ratio = np.nan_to_num(ne.evaluate(expression, local_dict=ctx))
     except IndexError:
-        ratio = 0.
+        ratio = 0.0
 
     return {
         "ndvi": ratio,
